@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormControl } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { SystemsApi, SystemSummary, SystemView } from '../../core/api/systems-api.service';
 import { CreateSystemComponent } from './create-system.component';
@@ -8,7 +8,7 @@ import { CreateSystemComponent } from './create-system.component';
 /** Catálogo de sistemas y primer comando de alta autorizado del dashboard. */
 @Component({
   standalone: true,
-  imports: [ReactiveFormsModule, CreateSystemComponent],
+  imports: [ReactiveFormsModule, RouterLink, CreateSystemComponent],
   template: `
     <main>
       <header>
@@ -39,6 +39,7 @@ import { CreateSystemComponent } from './create-system.component';
           <li>
             <strong>{{ s.name }}</strong> — {{ s.status }} · {{ s.cycleCount }} ciclos
             <small>Reciente: {{ s.recentCycle?.state ?? 'Sin ciclos' }}</small>
+            <a [routerLink]="['/systems', s.systemId, 'cycles']">Ver ciclos</a>
           </li>
         } @empty {
           <li>No se encontraron sistemas</li>

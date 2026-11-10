@@ -48,3 +48,59 @@ test('APPROVER no registra sistemas, aun con sesion y CSRF validos',async()=>{
   assert.equal(received.length,1,'el intento no alcanza el motor');
  });
 });
+
+const SYSTEM_ID='5b780d18-2931-4cbf-9628-3f63f10e7f11';
+
+test('AUTHOR y APPROVER consultan los ciclos del sistema por BFF',async()=>{
+ for(const role of ['AUTHOR','APPROVER']){
+  const {app,received}=setup();
+  await local(app,async base=>{
+   const user=creds[role];
+   const auth=await fetch(base+'/bff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)});
+   assert.equal(auth.status,200);
+   const cookies=auth.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+   const res=await fetch(base+'/bff/api/systems/'+SYSTEM_ID+'/cycles?limit=20',{headers:{Cookie:cookies}});
+   assert.equal(res.status,200);
+   assert.equal(received.length,2);
+   assert.equal(received[1].method,'GET');
+   assert.equal(new URL(received[1].url).pathname,'/api/systems/'+SYSTEM_ID+'/cycles');
+   assert.equal(new URL(received[1].url).searchParams.get('limit'),'20');
+   assert.equal(Buffer.from(received[1].headers.Authorization.slice(6),'base64').toString(),user.username+':'+user.password);
+  });
+ }
+});
+
+test('AUTHOR puede crear ciclo A0 a través del BFF con CSRF',async()=>{
+ const {app,received}=setup();
+ await local(app,async base=>{
+  const {cookie,csrf}=await login(base);
+  const res=await fetch(base+'/bff/api/systems/'+SYSTEM_ID+'/cycles',{
+   method:'POST',headers:{Cookie:cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'},
+   body:JSON.stringify({configurationVersionId:null})
+  });
+  assert.equal(res.status,200); // Stub: el motor real responde HTTP 201.
+  assert.equal(received.length,2);
+  assert.equal(received[1].method,'POST');
+  assert.equal(new URL(received[1].url).pathname,'/api/systems/'+SYSTEM_ID+'/cycles');
+  assert.equal(received[1].headers['Content-Type'],'application/json');
+ });
+});
+
+test('APPROVER no puede crear ciclo, aun con CSRF válido',async()=>{
+ const {app,received}=setup();
+ await local(app,async base=>{
+  const user=creds.APPROVER;
+  const auth=await fetch(base+'/bff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)});
+  assert.equal(auth.status,200);
+  const cookie=auth.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+  const csrf=/MIEC-XSRF-TOKEN=([^;]+)/.exec(cookie)?.[1];
+  assert.ok(csrf);
+  const res=await fetch(base+'/bff/api/systems/'+SYSTEM_ID+'/cycles',{
+   method:'POST',headers:{Cookie:cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'},
+   body:JSON.stringify({configurationVersionId:null})
+  });
+  assert.equal(res.status,403);
+  assert.equal((await res.json()).code,'FORBIDDEN');
+  assert.equal(received.length,1,'rechazo local: el motor no recibe la creación');
+ });
+});
