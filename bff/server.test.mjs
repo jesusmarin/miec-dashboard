@@ -18,3 +18,33 @@ test('sesion HttpOnly, no expone contraseña y verifica el motor',async()=>{cons
 test('rechaza POST sin CSRF y acepta GET autenticado',async()=>{const {app,received}=setup();await local(app,async base=>{const {cookie}=await login(base);let res=await fetch(base+'/bff/api/systems',{headers:{Cookie:cookie}});assert.equal(res.status,200);res=await fetch(base+'/bff/api/systems',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json'},body:'{}'});assert.equal(res.status,403);assert.equal(received.length,2);});});
 test('logout con CSRF invalida la sesion',async()=>{const {app}=setup();await local(app,async base=>{const {cookie,csrf}=await login(base);const res=await fetch(base+'/bff/logout',{method:'POST',headers:{Cookie:cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:'{}'});assert.equal(res.status,200);const after=await fetch(base+'/bff/session',{headers:{Cookie:cookie}});assert.equal(after.status,401);});});
 test('restringe origen cruzado y sin sesion',async()=>{const {app}=setup();await local(app,async base=>{let r=await fetch(base+'/bff/api/systems');assert.equal(r.status,401);r=await fetch(base+'/bff/login',{method:'POST',headers:{Origin:'http://evil.example','Content-Type':'application/json'},body:'{}'});assert.equal(r.status,403);});});
+
+
+test('AUTHOR registra por el proxy con CSRF y conserva el contrato',async()=>{
+ const {app,received}=setup();
+ await local(app,async base=>{
+  const {cookie,csrf}=await login(base);
+  const command={name:'Proyecto MIEC',domain:'software',description:null,ownerReference:null};
+  const res=await fetch(base+'/bff/api/systems',{method:'POST',headers:{Cookie:cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify(command)});
+  assert.equal(res.status,200); // Stub: el motor real responde 201.
+  assert.equal(received.length,2);
+  assert.equal(received[1].method,'POST');
+  assert.equal(new URL(received[1].url).pathname,'/api/systems');
+  assert.equal(received[1].headers['Content-Type'],'application/json');
+  assert.equal(Buffer.from(received[1].headers.Authorization.slice(6),'base64').toString(),'author:'+creds.AUTHOR.password);
+ });
+});
+test('APPROVER no registra sistemas, aun con sesion y CSRF validos',async()=>{
+ const {app,received}=setup();
+ await local(app,async base=>{
+  const r=await fetch(base+'/bff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:creds.APPROVER.username,password:creds.APPROVER.password})});
+  assert.equal(r.status,200);
+  const cookie=r.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+  const csrf=/MIEC-XSRF-TOKEN=([^;]+)/.exec(cookie)?.[1];
+  assert.ok(csrf);
+  const res=await fetch(base+'/bff/api/systems',{method:'POST',headers:{Cookie:cookie,'X-CSRF-Token':csrf,'Content-Type':'application/json'},body:JSON.stringify({name:'Intento no autorizado'})});
+  assert.equal(res.status,403);
+  assert.equal((await res.json()).code,'FORBIDDEN');
+  assert.equal(received.length,1,'el intento no alcanza el motor');
+ });
+});
