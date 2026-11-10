@@ -59,6 +59,8 @@ export function createApp({engineOrigin=process.env.MIEC_ENGINE_ORIGIN??'http://
     }
     if(!pathname.startsWith('/bff/api/')||!['GET','POST'].includes(req.method))return json(res,404,{code:'UNSUPPORTED_ROUTE'});
     const rest=pathname.slice('/bff'.length);if(!/^\/api\/[A-Za-z0-9._\-/]+$/.test(rest)||rest.includes('..'))return json(res,400,{code:'INVALID_PATH'});
+    // Defense in depth: the backend is still the authority for all role checks.
+    if(req.method==='POST'&&rest==='/api/systems'&&session.role!=='AUTHOR')return json(res,403,{code:'FORBIDDEN'});
     const account=credentials[session.role];
     const headers={'Authorization':'Basic '+Buffer.from(account.username+':'+account.password).toString('base64'),'Accept':'application/json'};
     let raw;if(req.method==='POST'){
